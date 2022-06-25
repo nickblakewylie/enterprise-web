@@ -1,0 +1,11 @@
+{
+  "expo": {
+    "name": "enterprise-innovation",
+    "slug": "enterprise-innovation",
+    "version": "1.0.0",
+    "assetBundlePatterns": [
+      "**/*"
+    ]
+  },
+  "name": "enterprise-innovation"
+}
