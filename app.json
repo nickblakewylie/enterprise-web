@@ -1,11 +1,15 @@
 {
   "expo": {
     "name": "enterprise-innovation",
-    "slug": "enterprise-innovation",
+    "slug": "enterprise-web",
+    "owner":"nwylie",
     "version": "1.0.0",
     "assetBundlePatterns": [
       "**/*"
-    ]
+    ],
+    "ios": {
+      "bundleIdentifier": "org.name.enterpriseinnovation"
+    }
   },
   "name": "enterprise-innovation"
 }
