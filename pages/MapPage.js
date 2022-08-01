@@ -62,10 +62,6 @@ function MapPage() {
     }
   ]
   const sanFranPolygon = [
-    // {
-    //   latitude : 37.628748, 
-    //   longitude : -122.495262
-    // },
     {
       latitude: 37.691921,
       longitude:  -122.390992
