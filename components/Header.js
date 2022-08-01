@@ -1,5 +1,5 @@
 import { Text, View, StyleSheet, Image } from 'react-native'
-import React, { Component } from 'react'
+import React from 'react'
 import useTheme from '../myThemes/useTheme';
 import useThemedStyles from '../myThemes/useThemedStyles';
 

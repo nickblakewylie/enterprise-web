@@ -1,30 +1,66 @@
-import React, {useState, useEffect, useContext} from 'react'
-import MapView, { Overlay, Callout, Circle, Polyline, Marker, Polygon } from 'react-native-maps'
-import { StyleSheet, Text, View, TouchableOpacity, TouchableWithoutFeedback, SafeAreaView, TextInput, Keyboard, Modal, Image} from 'react-native';
+import React, {useState, useEffect, useContext, useRef} from 'react'
+import MapView, { Overlay, Callout, Circle, Polyline, Marker, Polygon, Animated as AnimatedMap, PROVIDER_GOOGLE} from 'react-native-maps'
+import { StyleSheet, Text, View, TouchableOpacity, TouchableWithoutFeedback, SafeAreaView, TextInput, Keyboard, Modal, Image, Animated, Dimensions} from 'react-native';
 import { FontAwesome, FontAwesome5, Ionicons } from '@expo/vector-icons'; 
 import CarMarker from '../components/CarMarker';
 import MyCallout from '../components/MyCallout';
-import DropDownPicker from 'react-native-dropdown-picker';
 
 import useTheme from '../myThemes/useTheme';
 import useThemedStyles from '../myThemes/useThemedStyles';
 import { db } from '../firebase';
 import {addDoc, arrayUnion, collection, doc, FieldValue, getDoc, getDocs, updateDoc} from "firebase/firestore";
 import { RideHistory } from '../RideHistory';
-
-
-
+import MapViewDirections from 'react-native-maps-directions';
+import Geocoder from 'react-native-geocoding';
+import ChargerMarker from '../components/ChargerMarker';
+import UserMarker from '../components/UserMarker';
+import {GOOGLE_MAPS_API_KEY, CHARGER_API_KEY} from "@env";
+Geocoder.init(GOOGLE_MAPS_API_KEY); 
+const chargerApiKey = CHARGER_API_KEY;
+const closestApi = "https://developer.nrel.gov/api/alt-fuel-stations/v1/nearest.json?limit=100&fuel_type=ELEC&api_key=" + chargerApiKey
 function MapPage() {
   const {rideHistory, setRideHistory} = useContext(RideHistory);
   const collectionRef = collection(db, "carCollection")
-  const userCollection = collection(db, "users");
   const [region, setRegion] = useState(null);
-  const sanFrancisco = {
-    latitude: 37.7749,
-    longitude: -122.431297,
-    longitudeDelta: 0.3,
-    latitudeDelta: 0.3
-  };
+  const zoomValue = useRef(new Animated.Value(1)).current;
+  const map = useRef(null);
+  const seattlePolygon = [
+    {
+      latitude: 47.517424, 
+      longitude:-122.395871
+    },{
+      latitude: 47.576058, 
+      longitude: -122.419551
+    },
+    {
+      latitude: 47.594956,
+      longitude: -122.339504
+    },
+    {
+      latitude: 47.660394, 
+      longitude:-122.424583
+    },
+    {
+      latitude: 47.733060,
+      longitude: -122.372750 
+    },
+    {
+      latitude: 47.732907,
+      longitude: -122.285266 
+    },
+    {
+      latitude: 47.683886,
+      longitude: -122.250469
+    },
+    {
+      latitude: 47.582120,
+      longitude: -122.288507
+    },
+    {
+      latitude: 47.511086, 
+      longitude:-122.245302
+    }
+  ]
   const sanFranPolygon = [
     // {
     //   latitude : 37.628748, 
@@ -97,6 +133,10 @@ function MapPage() {
   const [amountOfLongitudeChanges, setAmountOfLongitudeChanges] = useState(0);
   const [rideLineArray, setRideLineArray] = useState(null);
   const changeInDegrees = 0.003;
+  const [distanceToCar, setDistanceToCar] = useState(null);
+  const [updatingCarInProgress, setUpdatingCarInProgress] = useState(false);
+  const [carChargers, setCarChargers] = useState(null);
+  const [showChargers, setShowChargers] = useState(false);
   const ride = {
     "carTitle" : "Nissan Leaf",
     "cost" : "$20",
@@ -105,13 +145,15 @@ function MapPage() {
     "car" : car
   };
   const car ={
-    "title" : "Telsa",
-    "license_plate": "UF2SDfA",
-    "gas_mileage": 110,
-    "charge": 79,
+    "title" : "Chevrolet Bolt",
+    "license_plate": "T752549C",
+    "gas_mileage": 109,
+    "charge": 81,
     "latitude": 37.7749,
-    "longitude" : -122.431297,
-    "cost_per_hour" : 21
+    "longitude" : -122.430297,
+    "cost_per_hour" : 21,
+    "year" : 2022,
+    "range":259
   }
 
   async function updateCurrentCarCoordinates(){
@@ -135,10 +177,13 @@ function MapPage() {
     return docSnap;
   }
   async function changeMyCar(){
+      setUpdatingCarInProgress(true);
+      console.log(currentCar)
       const docSnap = await getMyCar(currentCar)
       console.log(docSnap.exists())
       setChosenCar(docSnap.data());
       setCurrentCarCoordinates({"latitude" :docSnap.data().latitude, "longitude" : docSnap.data().longitude});
+      setUpdatingCarInProgress(false);
   }
   async function addCarDocument(){
     const myDoc = await addDoc(collectionRef,car);
@@ -153,7 +198,6 @@ function MapPage() {
       const getDocumentRef = doc(db,"user", "eU4lnc1lvwuSZv3PgX93");
       const latMiles = changeInDegrees * amountOfLatChanges * 69;
       const longMiles = changeInDegrees * amountOfLongitudeChanges * 54.6;
-      console.log(calculateTimeChanged())
       const newReservation = {
         "carName": yourCar.data().title,
         "year" : yourCar.data().year,
@@ -216,15 +260,34 @@ function MapPage() {
   //       // one degree lattiude == 69 miles
   //       // one degree longitude == 54.6 miles
   // }
-  async function updateTheVehicleCharge(){
-
+  function searchForLocation(){
+    if(searchValue != ""){
+      Geocoder.from(searchValue)
+      .then(json => {
+        var location = json.results[0].geometry.location;
+        goToRegion(location.lat, location.lng);
+      })
+      .catch(error => console.warn(error));
+    }
   }
+
   useEffect(() => {
     const getData = async () => {
       await getAllCars()
+      map.current.animateToRegion(newRegion, 4000);
     }
     getData();
   }, []);
+  function goToRegion(latitude, longitude){
+      const updatedRegion = {
+        latitude: latitude,
+        longitude: longitude,
+        latitudeDelta:0.3,
+        longitudeDelta: 0.3
+      }
+      map.current.animateToRegion(updatedRegion, 1000);
+      setSearchValue(null)
+    }
   useEffect(() => {
     if(currentCar != null){
       const changeCar = async () => {
@@ -234,23 +297,133 @@ function MapPage() {
     }
   }, [currentCar])
   useEffect(() => {
-    if(startReservationTime != null && rideLineArray != null ){
+    if(startReservationTime != null && rideLineArray != null && Object.keys(chosenCar).length > 0 ){
       var tempA = rideLineArray.concat({latitude: currentCarCoordinates.latitude, longitude: currentCarCoordinates.longitude});
       setRideLineArray(tempA)
+      const reg = {
+        latitude: currentCarCoordinates.latitude,
+        longitude: currentCarCoordinates.longitude,
+        latitudeDelta:0.06,
+        longitudeDelta: 0.06
+      }
+      map.current.animateToRegion(reg, 500);
     }
   },[JSON.stringify(currentCarCoordinates)])
+
+  useEffect(() => {
+    if(startReservationTime != null && Object.keys(chosenCar).length > 0){
+      const reg = {
+        latitude: chosenCar.latitude,
+        longitude: chosenCar.longitude,
+        latitudeDelta:0.06,
+        longitudeDelta: 0.06
+      }
+      map.current.animateToRegion(reg, 2000);
+    } 
+  }, [startReservationTime])
+
+  const newRegion= {
+    latitude: 37.7749,
+    longitude: -122.431297,
+    longitudeDelta: 0.3,
+    latitudeDelta: 0.3
+  }
+
+  const amountOfChargers = (carData) => {
+    var numOfChargers = 0;
+    if(carData["ev_dc_fast_num"] != null){
+        numOfChargers += carData["ev_dc_fast_num"]
+    }
+    if(carData["ev_level1_evse_num"] != null){
+        numOfChargers += carData["ev_level1_evse_num"]
+    }
+    if(carData["ev_level2_evse_num"] != null){
+        numOfChargers += carData["ev_level2_evse_num"]
+    }
+    return numOfChargers
+}
+
+  async function getChargingStations(){
+    const cam = await map.current.getCamera();
+    console.log(cam);
+    if(cam != null && cam.center != null && cam.center.latitude != null && cam.center.longitude != null){
+      var lat = cam.center.latitude;
+      var long = cam.center.longitude;
+      var current_state = null;
+      }
+      var startT = new Date()
+      fetch(closestApi + "&latitude=" + lat +"&longitude=" + long + "&radius=80").then((data) => {return data.json()}).then((res) => {
+        console.log(res)
+        if(res != null && res.fuel_stations != null){
+          var newData = []
+          for(var i =0; i < res.fuel_stations.length; i ++){
+            if(amountOfChargers(res.fuel_stations[i]) > 0){
+              newData.push(res.fuel_stations[i]);
+            }
+          }
+          var endT = new Date()
+          console.log((endT.getTime() - startT.getTime())/1000)
+          setCarChargers(newData);
+        }
+      }
+      ).catch((er) => console.log(er))
+  }
   return (
     <TouchableWithoutFeedback onPress={ () => {Keyboard.dismiss(); setShowSearch(false) } }   accessible={false}>
     <View style={{width:"100%", alignItems:"center", justifyContent:"center"}}>
         <MapView
         style={style.map}
-        mapType="terrain"
-        initialRegion={sanFrancisco}
-        onRegionChangeComplete={(region) => setRegion(region)}
+        mapType="standard"
+        initialRegion={{
+          latitude: 37.7749,
+          longitude: -122.431297,
+          longitudeDelta: 10,
+          latitudeDelta: 10
+        }}
+        showsCompass={false}
+        ref={map}
+        onRegionChangeComplete={(region) => {
+          setRegion(region)
+        }}
         userInterfaceStyle="light"
-        showsUserLocation={true}
         zoomEnabled={true}
+        apiKey={GOOGLE_MAPS_API_KEY}
         >
+        <Marker
+          coordinate={{
+              latitude: 37.7749,
+              longitude: -122.431297
+          }}
+        >
+          <UserMarker />
+        </Marker>
+        {
+          chosenCar != null && startReservationTime == null &&Object.keys(chosenCar).length > 0 ?
+          <MapViewDirections
+            origin={{
+              latitude:chosenCar.latitude,
+              longitude:chosenCar.longitude,
+            }}
+            destination={{
+              latitude: 37.7749,
+              longitude: -122.431297,
+            }}
+            mode="DRIVING"
+            language="en"
+            apikey={GOOGLE_MAPS_API_KEY}
+            strokeColor="black"
+            resetOnChange={false}
+            strokeWidth={4}
+            onReady={result => {
+              map.current.fitToCoordinates(result.coordinates, {
+                    edgePadding: { top: 100, right: 100, bottom: 250, left: 100 },
+                    animated: true
+                  });
+                const milesDistance = result.distance * 0.621371;
+                setDistanceToCar(Math.round((milesDistance + Number.EPSILON) * 100) / 100)
+            }}
+          />: <></>
+        }
         {
           cars != null && cars.length > 0 ?
             cars.map((data) =>
@@ -262,33 +435,49 @@ function MapPage() {
               key={data.id}
               onPress={() => {startReservationTime == null ? setCurrentCar(data.id): ""}}
             >
-              <CarMarker currentCar={currentCar} setCurrentCar={setCurrentCar} carId={data.id} reservationInProgress={startReservationTime}/>
+              <CarMarker currentCar={currentCar} setCurrentCar={setCurrentCar} carId={data.id} reservationInProgress={startReservationTime} updatingCarInProgress={updatingCarInProgress}/>
           </Marker>)
         : <View></View>
         }
-      {/* <Circle center={sanFrancisco} radius={15000} strokeWidth={3} key="kajsldflkas" /> */}
+        {
+          carChargers != null && showChargers == true?
+            carChargers.map((data, index) =>
+              <Marker
+                coordinate={{
+                  latitude: data.latitude,
+                  longitude: data.longitude
+                }}
+                key={index}
+                tracksViewChanges={false}
+              >
+                <ChargerMarker  />
+                <MyCallout carData={data}/>
+              </Marker>
+            ):<></>
+        }
         <Polyline coordinates={rideLineArray} strokeColor={theme.colors.BACKGROUND} strokeWidth={6}/>
         <Polygon coordinates={sanFranPolygon} strokeWidth={3} strokeColor={theme.colors.ACCENT} fillColor="rgba(21,154,90,0.3)"  zIndex={-100} style={{opacity: 0.1}}/>
+        <Polygon coordinates={seattlePolygon} strokeWidth={3} strokeColor={theme.colors.ACCENT} fillColor="rgba(21,154,90,0.3)"  zIndex={-100} style={{opacity: 0.1}} />
         </MapView>
         {         
-          chosenCar != null && Object.keys(chosenCar).length > 0?
+          chosenCar != null && Object.keys(chosenCar).length > 0 && distanceToCar != null?
           <View style={{position:"absolute", bottom: 0,width:"100%", backgroundColor:theme.colors.SECONDARY, height: 240}}>
                 <View style={{width:"100%", marginTop:10}}>
                     <Text style={{color:theme.colors.TEXT, textAlign:"center",fontSize:theme.typography.size.SM}}>{chosenCar.title}</Text>
                 </View>
                 <View style={{width:"100%", flexDirection:"row"}}>
                   <View style={{width:"50%", alignItems:"center",alignItems:"center"}}>
-                    <Image source={require("../assets/telsa.png")} style={{width:100,height: 66,resizeMode:'contain'}} />
+                    <Image source={chosenCar.title == "Tesla" ?require("../assets/tesla.png"):chosenCar.title == "Nissan Leaf" ?require("../assets/nissanleaf.png") :require("../assets/chevroletbolt.png")} style={{width:100,height: 66,resizeMode:'contain'}} />
                     <Text style={{color:theme.colors.TEXT, fontSize:theme.typography.size.SM}}>{chosenCar.license_plate}</Text>
                   </View>
                   <View style={{width:"50%", justifyContent:"center"}}>
                     <View style={{width:"100%", alignItems: "flex-end" ,justifyContent:"center", flexDirection:"row" }} >
-                      <View style={{width:"60%", alignItems:"center"}}>
+                      <View style={{width:"60%", alignItems:"center", justifyContent:""}}>
                         <View style={{marginBottom:10}}>
-                          <FontAwesome5 name="gas-pump" size={25} color="white" />
+                          <FontAwesome5 name="gas-pump" size={22} color="white" />
                         </View>
-                        <View>
-                          <Text style={{color:"white", fontSize:theme.typography.size.SM}}>Range</Text>
+                        <View style={{paddingRight: 4}}>
+                          <Ionicons name="location" size={22} color={theme.colors.BACKGROUND} />
                           </View>
                       </View>
                       <View style={{width:"40%", alignItems:"center"}}>
@@ -296,18 +485,30 @@ function MapPage() {
                           <Text style={{color:"white", textAlignVertical:"center", fontSize:theme.typography.size.SM}}>{chosenCar.charge}%</Text>
                         </View>
                         <View>
-                          <Text style={{color:"white", textAlignVertical:"center", fontSize:theme.typography.size.SM}}>{Math.round(chosenCar.range * (chosenCar.charge / 100))} miles</Text>
+                          <Text style={{color:"white", textAlignVertical:"center", fontSize:theme.typography.size.SM}} >{distanceToCar} mi</Text>
                         </View>
                       </View>
                     </View>
                   </View>
                 </View>
                 <View style={{width:"100%", flexDirection:"row"}}>
-                  <TouchableOpacity onPress={() => addReservation()} style={{backgroundColor:"#E3242B",width:"48%", padding:10, alignItems:"center", borderRadius:10, marginRight:"1%", marginLeft:"1%"}}>
-                      <Text style={{color:"white", fontWeight:"800", fontSize:theme.typography.size.SM}}>Cancel</Text>
+                  <TouchableOpacity onPress={async() => {
+                        if(startReservationTime != null){
+                          console.log("started");
+                          await addReservation()
+                          console.log("ended");
+                        }else{
+                          console.log("end")
+                          setCurrentCar(null);
+                          setChosenCar({});
+                          setDistanceToCar(null);
+                          setUpdatingCarInProgress(true);
+                        }
+                     }} style={{backgroundColor:"#E3242B",width:"48%", padding:10, alignItems:"center", borderRadius:10, marginRight:"1%", marginLeft:"1%"}}>
+                      <Text style={{color:"white", fontWeight:"800", fontSize:theme.typography.size.SM}}>{startReservationTime == null ? "Cancel" : "End"}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity onPress={() => userStartReservation()} style={{backgroundColor:theme.colors.ACCENT,width:"48%",padding:10,alignItems:"center",borderRadius:10, marginLeft: "1%",marginRight:"1%"}}>
-                      <Text style={{color:"white", fontWeight:"800", fontSize:theme.typography.size.SM}}>Reserve Car</Text>
+                      <Text style={{color:"white", fontWeight:"800", fontSize:theme.typography.size.SM}}>Reserve</Text>
                     </TouchableOpacity>
                 </View>
           </View>: <View></View>}
@@ -332,13 +533,28 @@ function MapPage() {
           </View>:<View></View>
           }
         <View
-          style={{position:"absolute",top:40, left: 20, alignItems:"flex-start", width:"100%"}}
+          style={{position:"absolute",top:40, width:"90%", flexDirection:"row", alignSelf:"center"}}
            >
-          <TouchableWithoutFeedback onPress={() => {setShowSearch(true); console.log("tapped")}}>
+          <TouchableWithoutFeedback onPress={() => {setShowSearch(true); console.log("tapped")}} style={{width:"100%", alignItems:"flex-start"}}>
             <View style={{ alignItems:"center", backgroundColor: theme.colors.SECONDARY, borderRadius:100, padding:theme.typography.size.S, opacity: showSearch? 0: 1 }}>
-              <FontAwesome name="search" size={30} color="white" />
-            </View>
+              <FontAwesome name="search" size={25} color="white" />
+            </View> 
           </TouchableWithoutFeedback>
+          <View style={{alignItems:"center", width:"85%",justifyContent:"center"}}>
+              <View style={{width:"100%", alignItems:"flex-end"}}>
+                <TouchableOpacity style={{ alignItems:"center", backgroundColor: theme.colors.SECONDARY, borderRadius:100, padding:theme.typography.size.S, opacity: showSearch? 0: 1 , justifyContent:"center"}} onPress={()=> {
+                  if(showChargers == false){
+                    setShowChargers(true);
+                    getChargingStations()
+                  }else{
+                    setCarChargers(null);
+                    setShowChargers(false);
+                  }
+                  }}>
+                  <FontAwesome5 name="gas-pump" size={25} color={showChargers ? theme.colors.ACCENT: "white"} />
+                </TouchableOpacity>
+            </View>
+          </View>
         </View>
         <Modal
           animationType='fade'
@@ -352,24 +568,15 @@ function MapPage() {
             <TouchableWithoutFeedback >
               <View style={{position:"absolute",top:40, alignItems:"center", width:"100%"}} >
                 <View style={{width:"90%", borderRadius:30, backgroundColor: theme.colors.SECONDARY }}>
-                <DropDownPicker 
-                  open={setOpenPicker}
-                  value={searchValue}
-                  items={searchItems}
-                  setValue={setSearchValue}
-                  setItems={setSearchItems}
-                  searchable={true}
-                  // style={{ color:theme.colors.TEXT}}
-                  listItemContainerStyle={{backgroundColor: theme.colors.SECONDARY, color: theme.colors.TEXT}}
-                  listItemLabelStyle={{color:theme.colors.TEXT}}
-                  searchPlaceholder="Search ..."
-                  theme="DARK"
-                  searchContainerStyle={{backgroundColor: theme.colors.SECONDARY}}
-                  dropDownContainerStyle={{backgroundColor: theme.colors.SECONDARY, borderRadius:20}}
-                  dropDownDirection="BOTTOM"
-                  hideSelectedItemIcon={false}
-                  style={{borderTopLeftRadius: 20, borderTopRightRadius: 20, backgroundColor:"black"}}
-                />
+                <View style={{width:"100%"}}>
+                  <TextInput 
+                    value={searchValue}
+                    onChangeText={setSearchValue}
+                    style={{width:"90%", height:60, padding:20, color:theme.colors.BACKGROUND,fontSize:20}}
+                    onSubmitEditing={() => {searchForLocation(); setShowSearch(false);}}
+                    placeholder="Search"
+                  />
+                </View>
                 </View>
               </View>
             </TouchableWithoutFeedback>

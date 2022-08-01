@@ -1,15 +1,25 @@
 {
   "expo": {
-    "name": "enterprise-innovation",
+    "name": "EWeb",
     "slug": "enterprise-web",
-    "owner":"nwylie",
-    "version": "1.0.0",
+    "version": "2.5.7",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "splash":{
+      "image":"./assets/eSplash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#000000"
+    },
     "assetBundlePatterns": [
       "**/*"
     ],
     "ios": {
-      "bundleIdentifier": "org.name.enterpriseinnovation"
+      "supportsTablet":false,
+      "bundleIdentifier": "com.musiclogtracker123.ios",
+      "buildNumber":"2.5.7"
+    },
+    "web": {
+      "favicon": "./assets/enterpriseLogo.png"
     }
-  },
-  "name": "enterprise-innovation"
+  }
 }

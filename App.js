@@ -17,6 +17,9 @@ import { createStackNavigator } from '@react-navigation/stack';
 import { doc, getDoc } from 'firebase/firestore';
 import { RideHistory } from './RideHistory';
 import { db } from './firebase';
+import * as SplashScreen from 'expo-splash-screen';
+
+SplashScreen.preventAutoHideAsync();
 const Tab = createBottomTabNavigator();
 function HomeTabs({route}){
   const theme = useTheme();
@@ -61,6 +64,7 @@ export default function App() {
       if(yourRideHistory != null && yourRideHistory.data() != null && yourRideHistory.data().carReservations){
         setRideHistory(yourRideHistory.data().carReservations);
       }
+      await SplashScreen.hideAsync();
     }
     getData();
   }, []);
