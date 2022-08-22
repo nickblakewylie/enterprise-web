@@ -5,7 +5,7 @@ Created a mobile application to prototype the idea of an electric car sharing se
 ## Features 
 
 ### Directions to vehicle, and allowing user to rent car
-Uses Google Maps Directions API to give the user directions electric vehicles.  As well as showing important information about the vehicle such as the vehicle name, the license plate number, the charge perecentage of the car, and the distance to the vehicle.  To simulate the driving experience the user can use the joystick to drive the car around the map.
+Uses Google Maps Directions API to give the user directions to electric vehicles.  As well as showing important information about the vehicle such as the vehicle name, the license plate number, the charge perecentage of the car, and the distance to the vehicle.  To simulate the driving experience the user can use the joystick to drive the car around the map.
 
 https://user-images.githubusercontent.com/77705797/185832390-4e5700dd-2206-4cbd-8eb7-a8c3bc5d3971.mp4
 
