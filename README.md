@@ -19,3 +19,8 @@ Using the Google Maps Geocoder API, the app takes in the city name sends it to g
 
 https://user-images.githubusercontent.com/77705797/185834028-bb6a8472-7b60-41b6-b848-fcbe18568965.mp4
 
+### Ride History Page
+Using firebase database the user is able to see all past rides, and information about each ride.  
+
+https://user-images.githubusercontent.com/77705797/185836711-9f26d9a6-3b24-4408-aa21-112d5e7289c6.mp4
+
